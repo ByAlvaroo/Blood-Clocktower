@@ -1,0 +1,34 @@
+import { createRequire } from 'node:module'; import { spawn, execSync } from 'node:child_process'; import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+const require = createRequire(execSync('npm root -g').toString().trim() + '/'); const { chromium } = require('playwright');
+const root = path.resolve(import.meta.dirname, '..');
+const sig = spawn('node', [root + '/tests/signal.mjs', '9101'], { stdio: 'ignore' });
+const mime = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.webmanifest':'application/json' };
+const web = http.createServer((q, r) => { const u = new URL(q.url, 'http://x').pathname; const f = path.join(root, u === '/' ? 'index.html' : u); fs.readFile(f, (e, d) => e ? (r.writeHead(404), r.end()) : (r.writeHead(200, { 'content-type': mime[path.extname(f)] || 'text/plain' }), r.end(d))); }).listen(8124);
+const done = c => { sig.kill(); web.close(); process.exit(c); }; setTimeout(() => { console.error('timeout'); done(1); }, 280000);
+await new Promise(r => setTimeout(r, 400));
+const b = await chromium.launch({ args: ['--disable-features=WebRtcHideLocalIpsWithMdns'] });
+const url = 'http://localhost:8124/?signal=' + encodeURIComponent('ws://localhost:9101/');
+const ctx = await b.newContext({ viewport: { width: 390, height: 780 } }); const errs = [];
+const host = await ctx.newPage(); host.on('pageerror', e => errs.push(e.message));
+let calls = 0; await ctx.route('https://generativelanguage.googleapis.com/**', async r => { calls++; const body = r.request().postData(); const isDawn = /amanecer/.test(body); const names = body.match(/estos muertos: ([^.]*)\./)?.[1] || ''; await r.fulfill({ json: { candidates: [{ content: { parts: [{ text: JSON.stringify(isDawn ? { texto: `La campana dobla sobre el pueblo. ${names || 'Nadie cayó esta noche'}.` } : { favor: 'EVIL' }) }] } }] } }); });
+await host.goto(url); await host.fill('#name', 'Host'); await host.click('[data-do=create]'); await host.waitForSelector('.code');
+for (let i = 0; i < 6; i++) await host.evaluate(() => window.__S.host.addBot());
+await host.evaluate(() => { const h = window.__S.host; h.aiKey = 'fake'; Object.assign(h.cfg, { nightSec: 2, daySec: 3, voteSec: 2 }); });
+await host.waitForTimeout(300); await host.click('[data-do=start]');
+await host.click('[data-do=seeRole]'); await host.click('[data-do=ready]');
+await host.waitForFunction(() => /antes del alba/i.test(document.body.innerText) , null, { timeout: 15000 });
+await host.waitForSelector('.clock', { timeout: 20000 }); console.log('día 1 alcanzado; llamadas Gemini', calls);
+// recarga del anfitrión a mitad de partida
+await host.reload(); await host.waitForSelector('[data-do=resumeHost]'); await host.click('[data-do=resumeHost]');
+await host.waitForFunction(() => window.__S.v && !window.__S.v.lobby, null, { timeout: 10000 }); console.log('anfitrión recuperado en fase', await host.evaluate(() => window.__S.v.phase));
+await host.waitForFunction(() => /fin de la partida/i.test(document.body.innerText), null, { timeout: 200000 });
+console.log(await host.evaluate(() => document.querySelector('h1').innerText + ' · ' + document.querySelector('p.center').innerText));
+console.log('Gemini en feed:', await host.evaluate(() => /campana dobla/.test(document.body.innerText)), 'llamadas', calls);
+await host.screenshot({ path: '/tmp/shots/8-over.png', fullPage: true });
+await host.click('[data-do=again]'); await host.waitForSelector('.code'); console.log('vuelta al lobby ok');
+// pantalla de mesa
+await host.check('[data-cfg=table]'); await host.waitForTimeout(300);
+await host.evaluate(() => window.__S.host.addBot()); await host.waitForTimeout(300); await host.click('[data-do=start]');
+await host.waitForSelector('.clock'); await host.waitForTimeout(1000);
+console.log('modo mesa: filas', await host.$$eval('.seat', e => e.length), 'rol visible:', await host.evaluate(() => !!window.__S.v.you));
+console.log('errores', errs); await b.close(); done(errs.length ? 1 : 0);
