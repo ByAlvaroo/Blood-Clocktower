@@ -24,7 +24,7 @@ function home() {
   S.key = 'home';
   const hs = Host.saved(), cs = store.get('ct_client');
   app.innerHTML = `
-  <h1>Blood on the<br>Clocktower</h1><p class="center mute">Una sala, tus amigos y un narrador que no duerme.</p>
+  <h1>Blood on the<br>Clocktower</h1><p class="center tag2">Grimorio de la villa maldita</p>
   ${hs ? `<div class="banner row"><span class="grow">Tienes la sala <b>${esc(hs.code)}</b> abierta.</span><button class="mini" data-do="resumeHost">Volver</button><button class="mini ghost" data-do="dropHost">Cerrar</button></div>` : ''}
   ${!hs && cs ? `<div class="banner row"><span class="grow">Estabas en la sala <b>${esc(cs.code)}</b>.</span><button class="mini" data-do="resumeClient">Volver</button><button class="mini ghost" data-do="dropClient">Olvidar</button></div>` : ''}
   <button class="profile" data-do="camera" aria-label="Hacerte una foto">${S.me.photo ? `<span class="ava"><img alt="Tu foto" src="${S.me.photo}"></span>` : `<span class="ava"><i>Foto</i></span>`}</button>
@@ -89,19 +89,29 @@ function paintNet() { let b = $('#netb'); if (!S.online && S.v) { if (!b) { b = 
 function show(v) {
   S.v = v; S.endAt = Date.now() + (v.left || 0);
   const phase = v.lobby ? 'LOBBY' : v.phase;
-  document.body.classList.toggle('night', phase === 'NIGHT' || phase === 'REVEAL');
+  document.body.classList.toggle('night', ['NIGHT', 'REVEAL', 'DAWN'].includes(phase));
   if (v.vote && !S.votingNow) { S.tab = 'mesa'; closeSheet(); } S.votingNow = !!v.vote;
   if (phase !== S.lastPhase) {
-    if (phase === 'NIGHT') { buzz([100, 50, 100]); S.night = { vals: [], typed: 0, phrase: pickPhrase() }; S.tab = 'mesa'; closeSheet(); }
+    if (phase === 'NIGHT') { buzz([100, 50, 100]); S.night = { vals: [], at: Date.now() }; S.tab = 'mesa'; closeSheet(); }
     if (phase === 'REVEAL') buzz(300); if (phase === 'DAY') { buzz(120); S.tab = 'mesa'; } if (phase === 'OVER') { buzz([200, 100, 200]); closeSheet(); }
     if (phase === 'ROLES') S.seen = false;
     S.lastPhase = phase;
   }
   const { left, ...rest } = v;
   const key = phase === 'NIGHT' ? `N${v.night}` : JSON.stringify(rest) + S.tab + S.seen;
+  if (phase === 'NIGHT' && key === S.key) return paintTyping(v);
   if (key === S.key) return; S.key = key;
-  ({ LOBBY: lobby, ROLES: roles, NIGHT: night, REVEAL: reveal, DAY: day, DUSK: day, OVER: over }[phase] || home)(v);
+  ({ LOBBY: lobby, ROLES: roles, NIGHT: night, REVEAL: reveal, DAWN: dawn, DAY: day, DUSK: day, OVER: over }[phase] || home)(v);
+  if (phase === 'NIGHT') paintTyping(v);
   paintNet();
+}
+function paintTyping(v) {
+  const el = $('#typing'); if (!el || !v.typing) return;
+  const done = v.typing.filter(t => t.done).length;
+  $('#typed-count').textContent = `${done} de ${v.typing.length} han completado su texto`;
+  el.innerHTML = v.typing.map(t => { const s = v.seats.find(x => x.id === t.id); return `<li class="${t.done ? 'done' : ''}"><span class="mk">${t.done ? '✓' : t.absent ? '×' : '…'}</span><span class="grow">${esc(s.name)}</span><span class="small">${t.done ? 'Completo' : t.absent ? 'Desconectado' : 'Escribiendo'}</span></li>`; }).join('');
+  const f = $('#force'); if (f) f.hidden = Date.now() - S.night.at < 180000;
+  if (v.you?.done && !S.night.sealed) { S.night.sealed = true; const t = $('#cam'); if (t) t.disabled = true; const m = $('#cammsg'); if (m) m.textContent = 'Texto completo. Espera a los demás.'; }
 }
 setInterval(() => { const s = Math.max(0, Math.ceil((S.endAt - Date.now()) / 1000)); document.querySelectorAll('.tick').forEach(e => e.textContent = s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s}s`); }, 250);
 
@@ -115,15 +125,13 @@ function lobby(v) {
   ${h ? `<button class="mini ghost" data-do="up" data-id="${esc(m.id)}" aria-label="Subir">↑</button><button class="mini ghost" data-do="down" data-id="${esc(m.id)}" aria-label="Bajar">↓</button>${m.id !== h.myId ? `<button class="mini ghost" data-do="kick" data-id="${esc(m.id)}" aria-label="Expulsar">×</button>` : ''}` : ''}</li>`).join('')}</ul></div>
   ${h ? `<div class="card"><h3>Partida</h3>
     <label class="f"><span>Roles</span><select data-cfg="script">${opt('full', c.script, 'Edición Yogscast completa')}${opt('basic', c.script, 'Iniciación (roles sencillos)')}</select></label>
-    <div class="row"><label class="f grow"><span>Noche</span><select data-cfg="nightSec" data-num>${[30, 45, 60, 90].map(x => opt(x, c.nightSec, x + ' s')).join('')}</select></label>
-    <label class="f grow"><span>Debate</span><select data-cfg="daySec" data-num>${[120, 180, 300, 420, 600].map(x => opt(x, c.daySec, x / 60 + ' min')).join('')}</select></label>
-    <label class="f grow"><span>Voto</span><select data-cfg="voteSec" data-num>${[8, 12, 20].map(x => opt(x, c.voteSec, x + ' s')).join('')}</select></label></div>
+    <div class="row"><label class="f grow"><span>Caos</span><select data-cfg="chaos">${opt('alto', c.chaos, 'Alto')}${opt('medio', c.chaos, 'Medio')}${opt('bajo', c.chaos, 'Bajo')}</select></label>
+    <label class="f grow"><span>Debate</span><select data-cfg="daySec" data-num>${[300, 420, 600, 900].map(x => opt(x, c.daySec, x / 60 + ' min')).join('')}</select></label>
+    <label class="f grow"><span>Voto</span><select data-cfg="voteSec" data-num>${[12, 20, 30].map(x => opt(x, c.voteSec, x + ' s')).join('')}</select></label></div>
     <label class="row small"><input type="checkbox" style="width:22px;min-height:22px" data-cfg="table" ${c.table ? 'checked' : ''}> Este dispositivo solo es pantalla de mesa (no juega)</label>
-    <details style="margin-top:8px"><summary>Narrador con Gemini (opcional)</summary><p class="small mute">La clave se guarda solo aquí. Sin ella, el narrador automático funciona igual.</p><input id="aikey" type="password" autocomplete="off" placeholder="Clave de Gemini" value="${esc(h.aiKey)}"></details>
     <details><summary>Probar sin gente</summary><button class="wide" data-do="bot">Añadir un bot</button></details>
   </div><button class="main" data-do="start" ${n < MIN_PLAYERS ? 'disabled' : ''}>${n < MIN_PLAYERS ? `Faltan ${MIN_PLAYERS - n} jugadores` : 'Empezar la partida'}</button>` : `<p class="center mute">Esperando a que el anfitrión empiece…</p>`}
   <p class="center"><button class="ghost" data-do="guide">Guía de roles</button> <button class="ghost" data-do="leave">Salir</button></p>`;
-  const k = $('#aikey'); if (k) k.onchange = () => { h.aiKey = k.value.trim(); h.persist(); };
 }
 
 const roleCard = y => `<div class="role ${y.team}"><span class="tag">${y.team === 'E' ? 'Equipo del Mal' : 'Equipo del Bien'}</span><h2>${esc(y.roleName)}</h2><p>${esc(y.roleText)}</p></div>`;
@@ -137,8 +145,6 @@ function roles(v) {
   <button class="main" data-do="ready" ${y.ready || !S.seen ? 'disabled' : ''} style="margin-top:12px">${y.ready ? 'Esperando a los demás…' : 'Lo tengo'}</button>`;
 }
 
-const PHRASES = ['El reloj de la torre marca la hora en que nadie duerme tranquilo en este pueblo', 'Mantengo la mente en calma mientras la niebla cubre las calles vacías', 'Nadie sabe quién llama a la puerta cuando la vela se apaga'];
-const pickPhrase = () => PHRASES[Math.floor(Math.random() * PHRASES.length)];
 
 function field(f, i, v) {
   if (f.k === 'p') return `<p class="small">${esc(f.label)}</p><div class="pgrid">${f.ids.map(id => { const s = v.seats.find(x => x.id === id); return `<button data-do="pick" data-i="${i}" data-id="${esc(id)}">${ava(id, s.name)}${esc(s.name)}</button>`; }).join('')}</div>`;
@@ -146,17 +152,24 @@ function field(f, i, v) {
 }
 function night(v) {
   const y = v.you;
-  app.innerHTML = `<div class="night"><h3 class="center">La noche cae · ${v.night}</h3><p class="timer tick"></p>
+  app.innerHTML = `<div class="nightbox"><h3 class="center">La noche cae · ${v.night}</h3>
   ${y ? `<div class="card"><p class="small">${esc(y.prompt.title)}</p>${y.prompt.fields.map((f, i) => field(f, i, v)).join('')}</div>
-  <div class="card"><p class="small">Escribe sin parar hasta que amanezca. Así nadie distingue quién actúa.</p><p class="small"><i>${esc(S.night.phrase)}</i></p>
-  <textarea id="cam" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea><div class="bar"><div id="cambar"></div></div></div>` : `${clock(v)}`}</div>`;
-  const t = $('#cam'); if (t) t.oninput = () => { S.night.typed++; $('#cambar').style.width = Math.min(100, S.night.typed / 1.2) + '%'; };
+  <div class="card"><p class="small" id="cammsg">Copia tu texto entero. Amanecerá cuando todos lo completen.</p><p class="phrase">${esc(y.phrase)}</p>
+  <textarea id="cam" autocomplete="off" autocapitalize="off" spellcheck="false" ${y.done ? 'disabled' : ''}></textarea><div class="bar"><div id="cambar"></div></div></div>` : ''}
+  <div class="card"><h3 id="typed-count"></h3><ul class="list typing" id="typing"></ul></div>
+  ${S.host ? '<button class="ghost wide" id="force" hidden data-do="force">Amanecer sin esperar más</button>' : ''}</div>`;
+  const t = $('#cam'), want = normT(y?.phrase);
+  if (t) { t.onpaste = e => e.preventDefault(); t.oninput = () => { const g = normT(t.value); let i = 0; while (i < g.length && g[i] === want[i]) i++; $('#cambar').style.width = 100 * i / want.length + '%'; if (g === want) send({ type: 'typed', text: t.value }); }; }
   document.querySelectorAll('[data-pick]').forEach(s => s.onchange = () => { S.night.vals[+s.dataset.pick] = s.value; chooseNow(); });
 }
-const chooseNow = () => send({ type: 'choose', values: Array.from({ length: S.v.you.prompt.fields.length }, (_, i) => S.night.vals[i] || null) });
+const chooseNow = () => { send({ type: 'choose', values: Array.from({ length: S.v.you.prompt.fields.length }, (_, i) => S.night.vals[i] || null) }); const t = $('#cam'); if (t && !t.disabled && normT(t.value) === normT(S.v.you.phrase)) send({ type: 'typed', text: t.value }); };
 
+const normT = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+function dawn(v) {
+  app.innerHTML = `<div class="nightbox dawn"><h3 class="center">Amanece</h3><p class="dawntext">${esc(v.dawn)}</p>${v.event ? `<div class="edict"><h3>Edicto del día</h3><h2>${esc(v.event.name)}</h2><p>${esc(v.event.text)}</p></div>` : ''}<p class="timer tick"></p></div>`;
+}
 function reveal(v) {
-  app.innerHTML = `<div class="night"><h3 class="center">Antes del alba</h3><p class="timer tick"></p>${v.you ? `<div class="card">${v.you.card.map(t => `<p>${esc(t)}</p>`).join('')}</div>` : ''}<p class="center small">Memorízalo. Queda guardado en tu diario.</p></div>`;
+  app.innerHTML = `<div class="nightbox"><h3 class="center">Antes del alba</h3><p class="timer tick"></p>${v.you ? `<div class="card">${v.you.card.map(t => `<p>${esc(t)}</p>`).join('')}</div>` : ''}<p class="center small">Memorízalo. Queda guardado en tu diario.</p></div>`;
 }
 
 function clock(v) {
@@ -179,7 +192,7 @@ function day(v) {
     ${canVote ? `<div class="row" style="margin-top:10px"><button class="grow ${up ? 'on' : ''}" data-do="hand" data-id="1">${y.alive ? 'A favor' : 'Gastar voto fantasma'}</button><button class="grow" data-do="hand" data-id="0">En contra</button></div>` : '<p class="small mute">Ya no te quedan votos.</p>'}</div>` : '';
   const acts = (y?.acts || []).map((a, i) => `<button class="wide" style="margin-top:6px" data-do="act" data-id="${i}">${esc(a.label)}</button>`).join('');
   const canSleep = v.phase === 'DAY' && !vt && y?.alive;
-  app.innerHTML = tabs + clock(v) + voteBox + acts +
+  app.innerHTML = tabs + (v.event ? `<div class="edict small-e"><b>${esc(v.event.name)}.</b> ${esc(v.event.text)}</div>` : '') + clock(v) + voteBox + acts +
     (!vt && v.phase === 'DAY' && y?.alive ? `<p class="center small mute" style="margin:6px 0">${v.nominators.includes(S.pid) ? 'Ya has nominado hoy.' : 'Toca un retrato para nominar.'}</p>` : '') +
     (canSleep ? `<button class="wide" data-do="sleep">Terminar el día (${v.sleep})</button>` : '') + `<div class="card">${feedHtml(v)}</div>`;
 }
@@ -207,7 +220,7 @@ function dayAct(a) {
 }
 
 const actions = {
-  camera, closeCam: stopCam, create, guide, close: closeSheet, leave, join: () => join(),
+  force: () => S.host.forceDawn(), camera, closeCam: stopCam, create, guide, close: closeSheet, leave, join: () => join(),
   shoot() { const v = $('#vid'); setPhoto(v, v.videoWidth, v.videoHeight); },
   resumeHost() { need(); S.host = new Host(ui); const s = Host.saved(); S.pid = s.myId; S.host.open(S.me, s); S.key = 'wait'; app.innerHTML = '<p class="center mute">Recuperando la sala…</p>'; wake(); },
   dropHost() { Host.forget(); home(); }, dropClient() { store.del('ct_client'); home(); },

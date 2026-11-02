@@ -1,6 +1,7 @@
 // Cerebro del anfitrión: sala, jugadores, fotos, partida y guardado para sobrevivir a una recarga.
 import { HostNet } from './net.js';
-import { newGame, act, tick, viewFor, botAct, resolveNight, MAX_PLAYERS } from './engine.js';
+import { newGame, act, tick, viewFor, botAct, resolveNight, forceDawn, MAX_PLAYERS } from './engine.js';
+import { GEMINI_KEY } from './config.js';
 import { narratorHints, dawnText } from './ai.js';
 const KEY = 'ct_host';
 const code4 = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
@@ -9,11 +10,11 @@ const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { 
 const rid = () => Math.random().toString(36).slice(2, 10);
 
 export class Host {
-  constructor(ui) { this.ui = ui; this.members = []; this.cfg = { script: 'full', nightSec: 45, daySec: 300, voteSec: 12, table: false }; this.G = null; this.cids = new Map(); this.aiKey = ''; this.lock = false; this.sent = new Map(); }
+  constructor(ui) { this.ui = ui; this.members = []; this.cfg = { script: 'full', chaos: 'alto', daySec: 420, voteSec: 20, table: false }; this.G = null; this.cids = new Map(); this.aiKey = GEMINI_KEY; this.lock = false; this.sent = new Map(); }
   static saved() { const s = load(KEY); return s && Date.now() - s.at < 6 * 3600e3 ? s : null; }
   static forget() { try { localStorage.removeItem(KEY); } catch {} }
   open(me, resume) {
-    if (resume) Object.assign(this, { code: resume.code, token: resume.token, members: resume.members, cfg: resume.cfg, G: resume.G, myId: resume.myId, aiKey: resume.aiKey || '' });
+    if (resume) Object.assign(this, { code: resume.code, token: resume.token, members: resume.members, cfg: resume.cfg, G: resume.G, myId: resume.myId });
     else { this.code = code4(); this.token = rid() + rid(); this.myId = rid(); this.members = [{ id: this.myId, name: me.name, photo: me.photo, online: true, secret: rid() }]; }
     this.net = new HostNet({
       onReady: () => { this.ui.hostReady(this); this.push(true); },
@@ -24,7 +25,7 @@ export class Host {
     this.net.start(this.code, this.token);
     clearInterval(this.loop); this.loop = setInterval(() => this.step(), 500);
   }
-  persist() { save(KEY, { at: Date.now(), code: this.code, token: this.token, members: this.members, cfg: this.cfg, G: this.G, myId: this.myId, aiKey: this.aiKey }); }
+  persist() { save(KEY, { at: Date.now(), code: this.code, token: this.token, members: this.members, cfg: this.cfg, G: this.G, myId: this.myId }); }
   member(id) { return this.members.find(m => m.id === id); }
   message(cid, m) {
     if (m.t === 'hello') return this.hello(cid, m);
@@ -58,6 +59,7 @@ export class Host {
   kick(id) { this.members = this.members.filter(m => m.id !== id); this.push(true); }
   start() { try { this.G = newGame(this.members.map(m => ({ id: m.id, name: m.name, bot: m.bot })), this.cfg, this.code); this.push(true); } catch (e) { this.ui.toast(e.message); } }
   reset() { this.G = null; this.members = this.members.filter(m => m.bot || m.online || m.id === this.myId); this.push(true); }
+  forceDawn() { if (this.G) { forceDawn(this.G); this.push(true); } }
   apply(id, m) { if (!this.G) return 'La partida no ha empezado.'; const e = act(this.G, id, m); this.push(); return e; }
   async nightEnd() {
     this.lock = true; const G = this.G;
@@ -70,12 +72,13 @@ export class Host {
     const now = Date.now();
     if (!this.G) { let ch = false; this.members = this.members.filter(m => { const gone = m.id !== this.myId && !m.bot && !m.online && m.grace && now > m.grace; ch ||= gone; return !gone; }); if (ch) this.push(true); return; }
     if (this.lock) return;
+    this.G.absent = this.members.filter(m => !m.bot && m.id !== this.myId && !m.online && m.grace && now > m.grace).map(m => m.id);
     if (Math.random() < .5) for (const m of this.members) if (m.bot && Math.random() < .12) botAct(this.G, m.id, now);
     const r = tick(this.G, now);
     if (r === 'NIGHT_END') return void this.nightEnd();
     this.push(!!r);
   }
-  lobbyView() { return { lobby: true, code: this.code, cfg: { script: this.cfg.script, nightSec: this.cfg.nightSec, daySec: this.cfg.daySec }, members: this.members.map(m => ({ id: m.id, name: m.name, online: m.online !== false, bot: !!m.bot })) }; }
+  lobbyView() { return { lobby: true, code: this.code, cfg: { script: this.cfg.script, chaos: this.cfg.chaos, daySec: this.cfg.daySec }, members: this.members.map(m => ({ id: m.id, name: m.name, online: m.online !== false, bot: !!m.bot })) }; }
   viewOf(id) { return this.G ? viewFor(this.G, id) : this.lobbyView(); }
   push(hard) {
     if (hard) this.persist();

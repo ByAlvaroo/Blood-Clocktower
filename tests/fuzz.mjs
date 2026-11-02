@@ -4,7 +4,7 @@ const N = +process.argv[2] || 20000; let wins = { G: 0, E: 0 }, turns = 0, seen 
 const reasons = {};
 for (let g = 0; g < N; g++) {
   const n = 5 + g % 11, list = Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'J' + i, bot: true }));
-  const G = newGame(list, { script: g % 5 === 0 ? 'basic' : 'full', nightSec: 30, daySec: 60, voteSec: 8 }, 'TEST');
+  const G = newGame(list, { script: g % 5 === 0 ? 'basic' : 'full', chaos: 'alto', daySec: 60, voteSec: 8 }, 'TEST');
   Object.values(G.players).forEach(p => seen.add(p.role));
   // nadie repetido y cuadra el reparto
   const roles = Object.values(G.players).map(p => p.role);
@@ -16,7 +16,7 @@ for (let g = 0; g < N; g++) {
     for (const id of G.seats) botAct(G, id, now);
     now += 4000;
     if (G.phase === 'OVER') break;
-    if (G.phase === 'NIGHT' || G.phase === 'REVEAL' || G.phase === 'DUSK' || G.phase === 'ROLES') now = Math.max(now, G.phaseEnd);
+    if (['REVEAL','DAWN','DUSK','ROLES'].includes(G.phase)) now = Math.max(now, G.phaseEnd);
     const r = tick(G, now); if (r === 'NIGHT_END') resolveNight(G, now);
     for (const id of G.seats) {
       const v = viewFor(G, id, now), s = JSON.stringify(v);

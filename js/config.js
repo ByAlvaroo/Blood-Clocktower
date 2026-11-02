@@ -7,3 +7,5 @@ export const ICE = [
 ];
 export const ROOM_PREFIX = 'clocktower-byalvaro-v1-';
 export const GEMINI_MODEL = 'gemini-flash-lite-latest';
+// Clave fija del proyecto: es visible para cualquiera que abra la web o el repositorio público.
+export const GEMINI_KEY = 'AQ.Ab8RN6LsvFQRjJPQ7avvGC7vKjm2RpZTInuHmhN54qU1Wd-Q7Q';

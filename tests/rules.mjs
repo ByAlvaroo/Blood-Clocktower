@@ -1,7 +1,8 @@
 // Comprueba reglas concretas con repartos forzados.
 import assert from 'node:assert/strict';
 import { newGame, act, tick, viewFor, resolveNight, BY, DIST, startNight } from '../js/engine.js';
-const cfg = { script: 'full', nightSec: 30, daySec: 60, voteSec: 8 };
+const cfg = { script: 'full', chaos: 'bajo', daySec: 60, voteSec: 8 };
+import { CHAOS } from '../js/engine.js';
 function game(roles) {
   const list = roles.map((_, i) => ({ id: 'p' + i, name: 'J' + i }));
   const G = newGame(list, cfg, 'T');
@@ -10,7 +11,7 @@ function game(roles) {
 }
 let now = 1e12;
 const night = (G, ch = {}) => { if (G.phase !== 'NIGHT') { startNight(G, now); } for (const [k, v] of Object.entries(ch)) assert.equal(act(G, k, { type: 'choose', values: v }, now), undefined, 'choose ' + k); resolveNight(G, now); };
-const toDay = G => { now += 2e4; tick(G, now); };
+const toDay = G => { now += 2e4; tick(G, now); G.event = null; now += 2e4; tick(G, now); G.event = null; G.needAdj = 0; G.mute = null; G.phaseEnd = now + 6e4; };
 const vote = (G, by, t, hands) => { assert.equal(act(G, by, { type: 'nominate', target: t }, now), undefined); hands.forEach(h => act(G, h, { type: 'hand', up: true }, now)); now += 2e4; tick(G, now); };
 const endDay = G => { now += 3e5; tick(G, now); };
 const T = ['monje','soldado','cocinero','empatico','oraculo'];
@@ -39,4 +40,13 @@ ok('Quedan 2 con Demonio vivo: gana el Mal', () => { const G = game(['diablillo'
 ok('Alcalde: 3 vivos sin ejecución gana el Bien', () => { const G = game(['diablillo','envenenador','alcalde','monje','cocinero','empatico','virgen']); toDayNom(G); ['p1','p3','p4','p5'].forEach(p => G.players[p].alive = false); endDay(G); assert.equal(G.over.winner, 'G'); });
 ok('Secuaces y Demonio se conocen; Aldeanos no', () => { const G = newGame(Array.from({ length: 8 }, (_, k) => ({ id: 'p' + k, name: 'J' + k })), { ...cfg, script: 'basic' }, 'T'); const d = Object.values(G.players).find(p => BY[p.role].team === 'D'); assert.match(d.diary[0].text, /Secuaces/); for (const p of Object.values(G.players)) if (BY[p.role].team === 'T') assert.ok(!p.diary.some(x => /Demonio es/.test(x.text))); });
 ok('Trampas rechazadas: elegir un id ajeno al formulario', () => { const G = game(['diablillo','envenenador',...T]); G.night = 1; startNight(G, now); assert.match(act(G, 'p0', { type: 'choose', values: ['nadie'] }, now), /inválida/); assert.match(act(G, 'zz', { type: 'ready' }, now), /No estás/); });
+ok('La noche no acaba hasta que todos completan su texto', () => { const G = game(['diablillo','envenenador',...T]); G.night = 1; startNight(G, now); now += 9e8; assert.equal(tick(G, now), false);
+  const v = viewFor(G, 'p3', now); assert.equal(v.typing.length, 7); assert.ok(v.typing.every(t => !t.done));
+  assert.match(act(G, 'p3', { type: 'typed', text: 'otra cosa' }, now), /no coincide/);
+  assert.match(act(G, 'p0', { type: 'typed', text: G.players.p0.phrase }, now), /elegir/);
+  act(G, 'p0', { type: 'choose', values: ['p3'] }, now); act(G, 'p1', { type: 'choose', values: ['p3'] }, now); act(G, 'p2', { type: 'choose', values: ['p3'] }, now);
+  for (const p of Object.values(G.players)) assert.equal(act(G, p.id, { type: 'typed', text: p.phrase.toUpperCase().replace('Í','I') }, now), undefined);
+  assert.ok(viewFor(G, 'p3', now).typing.every(t => t.done)); assert.equal(tick(G, now), 'NIGHT_END'); });
+ok('Desconectado no bloquea la noche', () => { const G = game(['diablillo','envenenador',...T]); G.night = 1; startNight(G, now); G.seats.forEach(id => { G.players[id].done = id !== 'p6'; }); assert.equal(tick(G, now), false); G.absent = ['p6']; assert.equal(tick(G, now), 'NIGHT_END'); });
+ok('Eventos: Sed de sangre baja el umbral y Lengua cortada impide nominar', () => { const G = game(['diablillo','envenenador',...T]); toDayNom(G); const b = viewFor(G, 'p2', now).need; G.needAdj = -1; assert.equal(viewFor(G, 'p2', now).need, b - 1); G.mute = 'p2'; assert.match(act(G, 'p2', { type: 'nominate', target: 'p3' }, now), /lengua/); assert.ok(Object.keys(CHAOS).length >= 10); });
 console.log(n, 'reglas verificadas');

@@ -31,7 +31,32 @@ export const EXCLUDED = {
 export const AUTO = CATALOG.filter(r => !EXCLUDED[r.id]).map(r => r.id);
 export const BASIC = ['lavandera','bibliotecario','investigador','cocinero','empatico','adivina','sepulturero','monje','cuidador_de_cuervos','virgen','cazademonios','soldado','alcalde','mayordomo','borracho','ermitano','santo','envenenador','espia','mujer_escarlata','baron','diablillo'];
 
-const FAR = 1e9, DUSK_MS = 7000, REVEAL_MS = 11000, ROLES_MS = 60000;
+const FAR = 1e9, DUSK_MS = 10000, REVEAL_MS = 16000, DAWN_MS = 14000, ROLES_MS = 90000;
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+export const PHRASES = [
+  'El reloj de la torre marca una hora que nadie en este pueblo quiere escuchar esta noche',
+  'Juro por la campana rota que no he visto quien camina entre las casas dormidas',
+  'Mantengo la vela encendida porque algo respira detras de la puerta de mi habitacion',
+  'La niebla baja por la colina y borra los nombres escritos en las lapidas viejas',
+  'Quien cuenta las campanadas sabe que esta noche sonara una mas de las debidas',
+  'Las ratas abandonan la iglesia y los perros se niegan a mirar hacia la plaza',
+  'Escribo estas palabras con pulso firme para que mañana nadie dude de mi inocencia',
+  'El sepulturero cava sin que nadie haya muerto y sonrie cuando le preguntan por que',
+  'Oigo pasos en el tejado y una voz que repite mi nombre muy despacio',
+  'Si amanece y sigo aqui contare todo lo que he visto bajo la luna',
+];
+export const CHAOS = {
+  rumor:{ name:'Rumor en la taberna', text:'Alguien ha dejado una nota clavada en la puerta. Podría ser mentira.' },
+  niebla:{ name:'Niebla espesa', text:'Hoy las votaciones son secretas: nadie ve las manos de los demás.' },
+  hoguera:{ name:'Noche de hoguera', text:'Nadie quiere volver a casa. El debate de hoy dura más.' },
+  campana:{ name:'Campana de alarma', text:'Algo se acerca. El debate de hoy dura mucho menos.' },
+  ley_marcial:{ name:'Ley marcial', text:'Hoy hace falta un voto más para llevar a alguien a la horca.' },
+  clemencia:{ name:'Sed de sangre', text:'El pueblo está furioso: hoy basta con un voto menos.' },
+  mudez:{ name:'Lengua cortada', text:'Una maldición impide nominar hoy a una persona.' },
+  carta:{ name:'Carta anónima', text:'Alguien ha recibido una carta con una verdad.' },
+  luna:{ name:'Luna de sangre', text:'Esta noche cada uno deberá escribir el doble.' },
+  reliquia:{ name:'Reliquia profanada', text:'Los muertos recuperan su voto.' },
+};
 const rnd = () => Math.random();
 export const pick = a => a[Math.floor(rnd() * a.length)];
 export const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -94,8 +119,8 @@ export function newGame(list, cfg, code = '') {
   if (n > MAX_PLAYERS) throw new Error(`El máximo son ${MAX_PLAYERS} jugadores.`);
   const G = { code, cfg, phase: 'ROLES', phaseEnd: 0, t: 0, night: 0, day: 0, seats: list.map(p => p.id), players: {}, feed: [], vote: null,
     nominators: [], nominated: [], top: 0, block: null, sleep: [], over: null, bluffs: [], hints: null, executed: null, execYesterday: null,
-    outsiderDied: -1, demonVoted: false, minionNom: false, gossip: false, noKill: false, mm: 0, princess: 0, moon: null, advocate: null, harpy: null, dawn: '' };
-  for (const l of list) G.players[l.id] = { id: l.id, name: l.name, bot: !!l.bot, role: null, ab: null, shown: null, team: 'G', shownTeam: 'G', alive: true, ghost: 1, fake: false, eff: [], used: {}, diary: [], card: [], ready: !!l.bot, prompt: null, choice: null };
+    outsiderDied: -1, demonVoted: false, minionNom: false, gossip: false, noKill: false, mm: 0, princess: 0, moon: null, advocate: null, harpy: null, dawn: '', event: null, needAdj: 0, mute: null, bloodMoon: false, absent: [] };
+  for (const l of list) G.players[l.id] = { id: l.id, name: l.name, bot: !!l.bot, role: null, ab: null, shown: null, team: 'G', shownTeam: 'G', alive: true, ghost: 1, fake: false, eff: [], used: {}, diary: [], card: [], ready: !!l.bot, prompt: null, choice: null, phrase: '', done: false };
   deal(G); firstInfo(G);
   G.phaseEnd = Date.now() + ROLES_MS;
   return G;
@@ -286,8 +311,9 @@ function promptFor(G, p) {
 }
 function startNight(G, now) {
   G.phase = 'NIGHT'; G.night++; G.t++; G.vote = null; G.sleep = []; G.dawn = ''; G.hints = null;
-  for (const p of all(G)) { p.card = []; p.choice = null; p.prompt = promptFor(G, p); p.ready = false; }
-  G.phaseEnd = now + G.cfg.nightSec * 1000;
+  const bag = shuffle(PHRASES);
+  all(G).forEach((p, i) => { p.card = []; p.choice = null; p.prompt = promptFor(G, p); p.ready = false; p.done = false; p.phrase = bag[i % bag.length] + (G.bloodMoon ? '. ' + bag[(i + 1) % bag.length] : ''); });
+  G.bloodMoon = false; G.phaseEnd = 0;
 }
 const pool = (G, p, f) => (f.pool === 'alive' ? living(G) : f.pool === 'all' ? all(G) : f.pool === 'deadT' ? all(G).filter(x => !x.alive && type(x.role) === 'T') : others(G, p));
 function complete(G, p) {
@@ -326,6 +352,29 @@ export function resolveNight(G, now) {
   if (G.over) feed(G, G.dawn, 'dawn');
   if (!G.over) { G.phase = 'REVEAL'; G.phaseEnd = now + REVEAL_MS; }
 }
+function rollChaos(G) {
+  const r = { alto: 1, medio: .6, bajo: .3 }[G.cfg.chaos] ?? 1;
+  G.needAdj = 0; G.mute = null; G.event = null;
+  if (rnd() > r) return;
+  const ids = Object.keys(CHAOS).filter(k => k !== G.lastEvent), id = pick(ids);
+  G.lastEvent = id; G.event = { id, ...CHAOS[id] };
+}
+function applyChaos(G) {
+  const e = G.event; if (!e) return;
+  feed(G, `${e.name}: ${e.text}`, 'alert');
+  const v = living(G);
+  if (e.id === 'rumor') feed(G, `La nota dice: «${statement(G, rnd() < .6)}»`, 'alert');
+  if (e.id === 'hoguera') G.phaseEnd += G.cfg.daySec * 500;
+  if (e.id === 'campana') G.phaseEnd -= G.cfg.daySec * 400;
+  if (e.id === 'ley_marcial') G.needAdj = 1;
+  if (e.id === 'clemencia') G.needAdj = -1;
+  if (e.id === 'mudez') { const m = pick(v); if (m) { G.mute = m.id; feed(G, `${nm(m)} no podrá nominar hoy.`, 'alert'); } }
+  if (e.id === 'carta') { const m = pick(v.filter(p => p.team === 'G')) || pick(v); if (m) note(m, G, `Carta anónima: ${statement(G, true)}`); }
+  if (e.id === 'luna') G.bloodMoon = true;
+  if (e.id === 'reliquia') all(G).forEach(p => { if (!p.alive) p.ghost = Math.max(p.ghost, 1); });
+}
+const voteNeed = G => Math.max(1, Math.ceil(living(G).length / 2) + (G.needAdj || 0));
+const secretVote = G => G.event?.id === 'niebla' || living(G).some(x => x.ab === 'organillero' && works(G, x));
 function startDay(G, now) {
   G.phase = 'DAY'; G.day++; G.t++; G.nominators = []; G.nominated = []; G.top = 0; G.block = null; G.sleep = []; G.vote = null; G.executed = null;
   G.demonVoted = false; G.minionNom = false; G.harpyVoted = false; G.harpyNom = false;
@@ -334,11 +383,11 @@ function startDay(G, now) {
   for (const p of living(G)) if (p.ab === 'erudito') { const t = statement(G, true), f = statement(G, false), [a, b] = shuffle([t, f]); say(G, p, () => `Una es cierta: «${a}» / «${b}»`, () => `Una es cierta: «${f}» / «${statement(G, false)}»`); }
   for (const p of all(G)) if (p.ab === 'hojalatero' && p.alive && G.day >= 2 && narr(G, .12)) { die(G, p, 'day'); feed(G, `${nm(p)} ha caído de repente.`, 'alert'); }
   checkWin(G);
-  if (!G.over) G.phaseEnd = now + G.cfg.daySec * 1000;
+  if (!G.over) { G.phaseEnd = now + G.cfg.daySec * 1000; applyChaos(G); }
 }
 function closeVote(G, now) {
   const v = G.vote; G.vote = null;
-  const t = G.players[v.target], need = Math.ceil(living(G).length / 2);
+  const t = G.players[v.target], need = voteNeed(G);
   const hands = all(G).filter(p => {
     let up = v.hands.includes(p.id) || (p.ab === 'fanatico' && p.alive && works(G, p));
     if (!up) return false;
@@ -348,7 +397,7 @@ function closeVote(G, now) {
   });
   hands.forEach(p => { if (!p.alive) p.ghost--; if (isDemon(p)) G.demonVoted = true; });
   if (G.harpy && G.harpy.b === t.id) { G.harpyNom = true; if (v.hands.includes(G.harpy.a)) G.harpyVoted = true; }
-  const n = hands.length, secret = living(G).some(p => p.ab === 'organillero' && works(G, p));
+  const n = hands.length, secret = secretVote(G);
   feed(G, secret ? `${nm(t)} recibe ${n} de ${need} votos necesarios.` : `${nm(t)} recibe ${n} votos (${hands.map(nm).join(', ') || 'nadie'}). Hacían falta ${need}.`);
   if (n >= need && n > G.top) { G.top = n; G.block = t.id; feed(G, `${nm(t)} va a la horca si nadie le supera.`, 'alert'); }
   else if (n >= need && n === G.top) { G.block = null; feed(G, 'Empate: nadie irá a la horca salvo que alguien supere esa cifra.', 'alert'); }
@@ -452,10 +501,17 @@ export function act(G, pid, m, now = Date.now()) {
       if (f[i].k === 'p' ? !pool(G, p, f[i]).some(x => x.id === v) : f[i].k === 'r' ? !f[i].set.includes(v) : !f[i].opts[v]) return 'Elección inválida.'; }
     p.choice = m.values.map(v => v || null); return;
   }
+  if (m.type === 'typed') {
+    if (G.phase !== 'NIGHT') return 'Ahora no.';
+    if (norm(m.text) !== norm(p.phrase)) return 'El texto no coincide con tu frase.';
+    if (!p.prompt.decoy && p.prompt.fields.some((f, i) => !f.opt && !p.choice?.[i])) return 'Antes tienes que elegir tu acción.';
+    p.done = true; return;
+  }
   if (m.type === 'nominate') {
     if (G.phase !== 'DAY' || G.vote) return 'No se puede nominar ahora.';
     const t = G.players[m.target]; if (!t) return 'Jugador desconocido.';
     if (!p.alive) return 'Los muertos no nominan.';
+    if (G.mute === pid) return 'Hoy tienes la lengua cortada.';
     if (G.nominators.includes(pid)) return 'Ya has nominado hoy.';
     if (G.nominated.includes(t.id)) return 'Ya ha sido nominado hoy.';
     G.nominators.push(pid); G.nominated.push(t.id);
@@ -482,28 +538,29 @@ export function act(G, pid, m, now = Date.now()) {
 export function tick(G, now = Date.now()) {
   if (G.phase === 'OVER') return false;
   if (G.phase === 'ROLES') { if (now >= G.phaseEnd || all(G).every(p => p.ready)) { startNight(G, now); return true; } return false; }
-  if (G.phase === 'NIGHT') { if (now >= G.phaseEnd) { return 'NIGHT_END'; } return false; }
-  if (G.phase === 'REVEAL') { if (now >= G.phaseEnd) { startDay(G, now); return true; } return false; }
+  if (G.phase === 'NIGHT') { return all(G).every(p => p.done || G.absent.includes(p.id)) ? 'NIGHT_END' : false; }
+  if (G.phase === 'REVEAL') { if (now >= G.phaseEnd) { rollChaos(G); G.phase = 'DAWN'; G.phaseEnd = now + DAWN_MS; return true; } return false; }
+  if (G.phase === 'DAWN') { if (now >= G.phaseEnd) { startDay(G, now); return true; } return false; }
   if (G.phase === 'DUSK') { if (now >= G.phaseEnd) { startNight(G, now); return true; } return false; }
   if (G.phase === 'DAY') {
-    if (G.vote) { const need = living(G).length + all(G).filter(p => !p.alive && p.ghost > 0).length; if (now >= G.vote.end || G.vote.seen.length >= need) { closeVote(G, now); checkWin(G); return true; } return false; }
-    if (now >= G.phaseEnd || G.sleep.length > living(G).length / 2) { endDay(G, now); return true; }
+    if (G.vote) { const need = living(G).length + all(G).filter(p => !p.alive && p.ghost > 0).length; if (now >= G.vote.end || (G.vote.seen.length >= need && G.vote.end - now < (G.cfg.voteSec - 6) * 1000)) { closeVote(G, now); checkWin(G); return true; } return false; }
+    if (now >= G.phaseEnd || G.sleep.length >= Math.ceil(living(G).length * 2 / 3)) { endDay(G, now); return true; }
   }
   return false;
 }
 
 // Lo ÚNICO que sale del anfitrión hacia cada jugador.
 export function viewFor(G, pid, now = Date.now()) {
-  const p = G.players[pid] || null, secret = G.vote && living(G).some(x => x.ab === 'organillero' && works(G, x));
+  const p = G.players[pid] || null, secret = G.vote && secretVote(G);
   const view = {
     code: G.code, phase: G.phase, night: G.night, day: G.day, left: Math.max(0, (G.vote ? G.vote.end : G.phaseEnd) - now),
     seats: all(G).map(x => ({ id: x.id, name: x.name, alive: x.alive, ghost: x.ghost > 0 })),
-    feed: G.feed.slice(-30), block: G.block, top: G.top, need: Math.ceil(living(G).length / 2), nominators: G.nominators, nominated: G.nominated, sleep: G.sleep.length,
+    feed: G.feed.slice(-30), block: G.block, top: G.top, need: voteNeed(G), dawn: G.phase === 'DAWN' ? G.dawn : '', event: G.event, typing: G.phase === 'NIGHT' ? all(G).map(x => ({ id: x.id, done: x.done, absent: G.absent.includes(x.id) })) : null, nominators: G.nominators, nominated: G.nominated, sleep: G.sleep.length,
     vote: G.vote && { target: G.vote.target, by: G.vote.by, hands: secret ? G.vote.hands.filter(i => i === pid) : G.vote.hands, secret: !!secret },
     over: G.over ? { ...G.over, reveal: all(G).map(x => ({ id: x.id, name: x.name, role: BY[x.role].name, team: x.team, alive: x.alive, type: type(x.role) })) } : null,
   };
   if (p) view.you = { id: p.id, role: p.shown, roleName: BY[p.shown].name, roleText: BY[p.shown].text, type: type(p.shown), team: p.shownTeam, alive: p.alive, ghost: p.ghost, diary: p.diary, ready: p.ready,
-    prompt: G.phase === 'NIGHT' ? strip(G, p, p.prompt) : null, choice: p.choice, card: G.phase === 'REVEAL' ? p.card : null, acts: dayActs(G, p).map(a => ({ ...a, fields: a.fields.map(f => cleanF(G, p, f)) })) };
+    prompt: G.phase === 'NIGHT' ? strip(G, p, p.prompt) : null, phrase: G.phase === 'NIGHT' ? p.phrase : '', done: p.done, choice: p.choice, card: G.phase === 'REVEAL' ? p.card : null, acts: dayActs(G, p).map(a => ({ ...a, fields: a.fields.map(f => cleanF(G, p, f)) })) };
   return view;
 }
 function opts(G, p, f) { return f.k === 'p' ? { ...f, ids: pool(G, p, f).map(x => x.id) } : f.k === 'r' ? { ...f, options: f.set.map(r => [r, BY[r].name]) } : { ...f, options: Object.entries(f.opts) }; }
@@ -513,7 +570,7 @@ const strip = (G, p, pr) => pr && { title: pr.title, fields: pr.fields.map(f => 
 // Bots para probar sin 5 móviles y para las simulaciones.
 export function botAct(G, pid, now = Date.now()) {
   const p = G.players[pid]; const r = rnd();
-  if (G.phase === 'NIGHT' && !p.choice) { p.choice = complete(G, p); return; }
+  if (G.phase === 'NIGHT') { if (!p.choice) p.choice = complete(G, p); else if (r < .5) p.done = true; return; }
   if (G.phase !== 'DAY') return;
   if (G.vote) { if (r < .45 && (p.alive || p.ghost > 0)) act(G, pid, { type: 'hand', up: true }, now); return; }
   const a = dayActs(G, p);
@@ -521,4 +578,5 @@ export function botAct(G, pid, now = Date.now()) {
   if (r < .35 && p.alive) { const t = pick(all(G).filter(x => !G.nominated.includes(x.id))); if (t) act(G, pid, { type: 'nominate', target: t.id }, now); return; }
   if (r < .7) act(G, pid, { type: 'sleep' }, now);
 }
+export function forceDawn(G) { if (G.phase === 'NIGHT') all(G).forEach(p => p.done = true); }
 export { startNight, living };

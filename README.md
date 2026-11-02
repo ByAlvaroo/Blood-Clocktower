@@ -20,7 +20,9 @@ GitHub Pages usa HTTPS, que es obligatorio para la cámara y para que los móvil
 3. En la sala, el anfitrión ordena la lista igual que estáis sentados. El orden importa para roles como el Empático.
 4. Con 5 a 15 jugadores, pulsa **Empezar la partida**. Lo demás es automático.
 
-Cada noche dura lo mismo para todos. Todos los móviles muestran la misma pantalla oscura y todos escriben sin parar, así nadie deduce quién actúa. Si no eliges a tiempo, el narrador elige por ti.
+Cada noche todos copian un texto entero en su móvil. **Solo amanece cuando todos lo han completado**, y en pantalla se ve quién lo tiene completo y quién sigue escribiendo. Quien tenga una acción debe elegirla antes. Si alguien se desconecta más de 25 segundos deja de bloquear la noche, y tras 3 minutos el anfitrión puede forzar el amanecer.
+
+Cada día puede caer un **Edicto del caos**: votos secretos, un voto más o menos para ejecutar, una persona que no puede nominar, rumores, cartas anónimas, Luna de sangre (doble texto) y más. El nivel de caos se elige en la sala.
 
 ## Consejos para que vaya bien
 
@@ -33,7 +35,7 @@ Cada noche dura lo mismo para todos. Todos los móviles muestran la misma pantal
 
 El narrador automático reparte los roles, resuelve la noche, da información falsa a borrachos y envenenados, decide cómo se registran Ermitaño y Espía y procura mantener la partida igualada.
 
-Gemini es opcional. Si el anfitrión pega su clave en la sala, se usa para orientar esas decisiones y escribir los amaneceres. La clave se queda en su navegador y nunca va al repositorio. Si no hay clave o Gemini falla, la partida sigue igual. El modelo se cambia en `js/config.js`.
+Gemini orienta esas decisiones y escribe los amaneceres. La clave está en `js/config.js`, así que **cualquiera puede verla** en un repositorio público; limita su uso en la consola de Google. Si Gemini falla, la partida sigue igual. El modelo también se cambia en ese archivo.
 
 ## Roles
 

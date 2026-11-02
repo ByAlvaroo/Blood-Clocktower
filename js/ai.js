@@ -18,7 +18,7 @@ export async function narratorHints(key, G) {
 }
 export async function dawnText(key, G) {
   const names = G.lastDead || [];
-  const a = await ask(key, `Eres el Narrador gótico de un pueblo maldito. Escribe en español 2 frases para el amanecer del día ${G.day + 1}. ${names.length ? `Debes nombrar exactamente a estos muertos: ${names.join(', ')}.` : 'Esta noche no ha muerto nadie: dilo claramente.'} No inventes más muertes ni reveles roles ni equipos. Responde solo JSON {"texto":"..."}.`);
+  const a = await ask(key, `Eres el Narrador gótico de un pueblo maldito. Escribe en español 2 frases para el amanecer del día ${G.day + 1}. ${names.length ? `Debes nombrar exactamente a estos muertos: ${names.join(', ')}.` : 'Esta noche no ha muerto nadie: dilo claramente.'} Crea tensión y paranoia. No inventes más muertes ni reveles roles ni equipos. Responde solo JSON {"texto":"..."}.`);
   const t = a?.texto?.trim();
   return t && t.length < 400 && names.every(n => t.includes(n)) ? t : null;
 }
